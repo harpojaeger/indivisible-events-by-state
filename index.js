@@ -19,7 +19,7 @@ app.get('/:state/feed', function(req, res) {
   console.log('Looking for events in ' + req.params.state)
   var feedOptions = {
     title: 'Indivisible events in ' + req.params.state.toUpperCase(),
-    feed_url: 'https://indivisible-events-by-state.herokuapp.com/' + req.params.state.toUpperCase(),
+    feed_url: 'https://indivisible-events-by-state.herokuapp.com/' + req.params.state.toUpperCase()+'/feed',
     site_url: 'http://indivisibleguide.org',
   }
   var feed = new RSS(feedOptions);
