@@ -9,7 +9,7 @@
     "body-parser": "^1.16.1",
     "express": "^4.14.1",
     "request": "^2.79.0",
-    "request-promise": "^4.1.1"
+    "rss": "^1.2.2"
   },
   "devDependencies": {},
   "scripts": {

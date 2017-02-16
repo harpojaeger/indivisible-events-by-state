@@ -1,17 +1,20 @@
-var express = require('express');
-var app = express();
-var request = require('request');
+var express = require('express')
+var app = express()
+var request = require('request')
 var bodyParser = require('body-parser')
-var async = require('async');
+var async = require('async')
+var RSS = require('rss')
 var port = process.env.PORT
 
 app.use( bodyParser.json() );       // to support JSON-encoded bodies
 app.use(bodyParser.urlencoded({     // to support URL-encoded bodies
   extended: true
 }));
+
 app.get('/favicon.ico', function(req, res) {
-  res.send(null);
+  res.send(null)
 })
+
 app.get('/:state', function(req, res) {
   console.log('Looking for events in ' + req.params.state)
   var theRightEvents = []
@@ -49,8 +52,8 @@ app.get('/:state', function(req, res) {
           response = JSON.parse(page)
           var events = response._embedded['osdi:events']
           events.forEach(function(this_event) {
-            var state = this_event.location.region;
-            if (state == req.params.state){
+            var state = this_event.location.region.toUpperCase()
+            if (state === req.params.state.toUpperCase()){
               theRightEvents.push(this_event)
             }
           })
@@ -63,10 +66,11 @@ app.get('/:state', function(req, res) {
       console.log('Found ' + theRightEvents.length + ' events in ' + req.params.state)
     }
   })
-
-
 })
 
+app.get('*', function(req, res) {
+  res.send('Hello world.');
+})
 app.listen(port, function() {
   console.log('Node app is running on port', port);
 });
