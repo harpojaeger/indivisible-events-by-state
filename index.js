@@ -15,7 +15,7 @@ app.get('/favicon.ico', function(req, res) {
   res.send(null)
 })
 
-app.get('/:state', function(req, res) {
+app.get('/:state/feed', function(req, res) {
   console.log('Looking for events in ' + req.params.state)
   var feedOptions = {
     title: 'Indivisible events in ' + req.params.state.toUpperCase(),
