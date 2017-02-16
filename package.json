@@ -1,0 +1,20 @@
+{
+  "name": "an-event-campaign-search",
+  "version": "1.0.0",
+  "description": "Search Action Network for events in a particular event campaign, filtered by location.",
+  "main": "index.js",
+  "dependencies": {
+    "async": "^2.1.4",
+    "async-request": "^1.2.0",
+    "body-parser": "^1.16.1",
+    "express": "^4.14.1",
+    "request": "^2.79.0",
+    "request-promise": "^4.1.1"
+  },
+  "devDependencies": {},
+  "scripts": {
+    "test": "console.log('hello world');"
+  },
+  "author": "Harpo Jaeger",
+  "license": "ISC"
+}
