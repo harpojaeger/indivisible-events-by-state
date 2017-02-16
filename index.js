@@ -10,6 +10,7 @@ app.use(bodyParser.urlencoded({     // to support URL-encoded bodies
 }));
 
 app.get('/:state', function(req, res) {
+  console.log('Looking for events in ' + req.params.state)
   var theRightEvents = []
   var urls = []
   for(page = 1; page <19; page++){
