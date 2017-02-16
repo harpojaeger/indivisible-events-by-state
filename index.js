@@ -8,7 +8,9 @@ app.use( bodyParser.json() );       // to support JSON-encoded bodies
 app.use(bodyParser.urlencoded({     // to support URL-encoded bodies
   extended: true
 }));
-
+app.get('/favicon.ico', function(req, res) {
+  res.send(null);
+})
 app.get('/:state', function(req, res) {
   console.log('Looking for events in ' + req.params.state)
   var theRightEvents = []
@@ -40,7 +42,7 @@ app.get('/:state', function(req, res) {
       console.log('Uh oh, got an error.')
     } else {
       for(i=0; i<results.length; i++) {
-        console.log('Processing page ' + i+1)
+        console.log('Processing page ' + (i+1))
         var page = results[i]
         try {
           response = JSON.parse(page)
@@ -57,6 +59,7 @@ app.get('/:state', function(req, res) {
         }
       }
       res.send(theRightEvents);
+      console.log('Found ' + theRightEvents.length + ' events in ' + req.params.state)
     }
   })
 
