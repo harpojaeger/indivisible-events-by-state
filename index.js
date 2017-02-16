@@ -68,16 +68,16 @@ app.get('/:state/feed', function(req, res) {
           console.log(e)
         }
       }
-      //res.send(theRightEvents);
       console.log('Found ' + theRightEvents.length + ' events in ' + req.params.state)
       console.log('Generating feed.')
       for(i=0; i<theRightEvents.length; i++) {
         var thisEvent = theRightEvents[i]
         console.log('Processing event ',(i+1),'/',theRightEvents.length)
+        //console.log(thisEvent)
         var itemOptions = {
           title: thisEvent.title,
           description: thisEvent.description,
-          url: thisEvent._links.self.href,
+          url: thisEvent.browser_url,
           guid: thisEvent.identifiers[0],
           author: thisEvent._embedded['osdi:creator'].given_name + ' ' + thisEvent._embedded['osdi:creator'].family_name,
           date: thisEvent.start_date,
