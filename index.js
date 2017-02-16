@@ -17,6 +17,12 @@ app.get('/favicon.ico', function(req, res) {
 
 app.get('/:state', function(req, res) {
   console.log('Looking for events in ' + req.params.state)
+  var feedOptions = {
+    title: 'Indivisible events in ' + req.params.state.toUpperCase(),
+    feed_url: 'https://indivisible-events-by-state.herokuapp.com/' + req.params.state.toUpperCase(),
+    site_url: 'http://indivisibleguide.org',
+  }
+  var feed = new RSS(feedOptions);
   var theRightEvents = []
   var urls = []
   for(page = 1; page <19; page++){
@@ -24,7 +30,7 @@ app.get('/:state', function(req, res) {
   }
 
   var fetch = function(file, cb) {
-    console.log('Fetching ' + file)
+    //console.log('Fetching ' + file)
     var options = {
       method: 'GET',
       url: file,
@@ -62,15 +68,34 @@ app.get('/:state', function(req, res) {
           console.log(e)
         }
       }
-      res.send(theRightEvents);
+      //res.send(theRightEvents);
       console.log('Found ' + theRightEvents.length + ' events in ' + req.params.state)
+      console.log('Generating feed.')
+      for(i=0; i<theRightEvents.length; i++) {
+        var thisEvent = theRightEvents[i]
+        console.log('Processing event ',(i+1),'/',theRightEvents.length)
+        var itemOptions = {
+          title: thisEvent.title,
+          description: thisEvent.description,
+          url: thisEvent._links.self.href,
+          guid: thisEvent.identifiers[0],
+          author: thisEvent._embedded['osdi:creator'].given_name + ' ' + thisEvent._embedded['osdi:creator'].family_name,
+          date: thisEvent.start_date,
+          lat: thisEvent.location.location.latitude,
+          long: thisEvent.location.location.longitude
+        }
+        console.log(itemOptions);
+        feed.item(itemOptions);
+      }
+      var xml = feed.xml({indent: true})
+      res.send(xml)
     }
   })
 })
 
 app.get('*', function(req, res) {
-  res.send('Hello world.');
+  res.send('Hello world.')
 })
 app.listen(port, function() {
-  console.log('Node app is running on port', port);
-});
+  console.log('Node app is running on port', port)
+})
