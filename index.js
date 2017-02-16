@@ -3,6 +3,7 @@ var app = express();
 var request = require('request');
 var bodyParser = require('body-parser')
 var async = require('async');
+var port = process.env.PORT
 
 app.use( bodyParser.json() );       // to support JSON-encoded bodies
 app.use(bodyParser.urlencoded({     // to support URL-encoded bodies
@@ -66,6 +67,6 @@ app.get('/:state', function(req, res) {
 
 })
 
-app.listen(5000, function() {
-  console.log('Node app is running on port 5000');
+app.listen(port, function() {
+  console.log('Node app is running on port', port);
 });
