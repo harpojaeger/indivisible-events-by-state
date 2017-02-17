@@ -4,6 +4,7 @@ var request = require('request')
 var bodyParser = require('body-parser')
 var async = require('async')
 var RSS = require('rss')
+var dateFormat = require('dateformat')
 var port = process.env.PORT
 
 app.use( bodyParser.json() );       // to support JSON-encoded bodies
@@ -74,9 +75,11 @@ app.get('/:state/feed', function(req, res) {
         var thisEvent = theRightEvents[i]
         console.log('Processing event ',(i+1),'/',theRightEvents.length)
         //console.log(thisEvent)
+        var formattedTime = dateFormat(thisEvent.start_date, 'UTC:ddd, mmm d, h:MM TT')
+
         var itemOptions = {
           title: thisEvent.title,
-          description: thisEvent.description,
+          description: '<p>' + formattedTime + '</p>' + thisEvent.description,
           url: thisEvent.browser_url,
           guid: thisEvent.identifiers[0],
           author: thisEvent._embedded['osdi:creator'].given_name + ' ' + thisEvent._embedded['osdi:creator'].family_name,
