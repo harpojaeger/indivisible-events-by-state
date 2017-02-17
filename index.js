@@ -17,6 +17,7 @@ app.get('/favicon.ico', function(req, res) {
 })
 
 app.get('/:state/feed', function(req, res) {
+  console.log(req)
   console.log('Looking for events in ' + req.params.state)
 
   // Create a new RSS feed
