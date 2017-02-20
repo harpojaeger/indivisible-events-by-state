@@ -88,10 +88,18 @@ app.get('/:state/feed', function(req, res) {
               events.forEach(function(this_event) {
                 // Check each event to see if it's in the right state
                 var state = this_event.location.region.toUpperCase()
-                if (state === req.params.state.toUpperCase()){
+                if (state === req.params.state.toUpperCase() && Date.parse(this_event.start_date) >= Date.now() ){
                   theRightEvents.push(this_event)
                 }
               })
+              function byStartTime(a,b) {
+                var aDate = Date.parse(a.start_date)
+                var bDate = Date.parse(b.start_date)
+                if (aDate < bDate) return -1
+                if (aDate > bDate) return 1
+                return 0
+              }
+              theRightEvents.sort(byStartTime)
             } catch(e) {
               console.log(e)
             }
