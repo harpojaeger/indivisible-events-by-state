@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 var pg = require('pg')
-pg.defaults.ssl = true;
+pg.defaults.ssl = true
 
 console.log('AN event retrieval script started.');
 var event_campaign_id = process.env.event_campaign_id
@@ -10,18 +10,17 @@ console.log(process.env.DATABASE_URL)
 console.log('Looking for table',event_table_name)
 
 pg.connect(process.env.DATABASE_URL, function(err, client) {
-  if (err) throw err;
-  console.log('Connected to postgres! Getting schemas...');
+  if (err) throw err
+  console.log('Connected to postgres! Getting schemas...')
 
   client
-    .query('SELECT table_schema,table_name FROM information_schema.tables;')
-    .on('row', function(row) {
-      console.log(JSON.stringify(row));
-    });
-  var query_string = `CREATE TABLE IF NOT EXISTS ${event_table_name} (
-    state TEXT
-    event TEXT
-  )`
-  client.query(query_string)
+    .query('CREATE TABLE IF NOT EXISTS mytable( state TEXT, event TEXT );')
+    .on('error', function(error){
+      console.error(error)
+    })
+  var query_string = "SELECT table_schema,table_name FROM information_schema.tables WHERE table_name='mytable';"
+  client.query(query_string).on('row', function(row) {
+    console.log(JSON.stringify(row));
+  })
 
 });
