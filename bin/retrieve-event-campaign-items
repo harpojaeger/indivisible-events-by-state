@@ -5,7 +5,7 @@ console.log('AN event retrieval script started.');
 var event_campaign_id = process.env.event_campaign_id
 var an_api_token = process.env.an_api_token
 var event_table_name = 'events-' + event_campaign_id
-console.log('Looking for db',target_db_name)
+console.log('Looking for db',event_table_name)
 
 var client = new pg.Client()
 
