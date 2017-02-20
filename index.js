@@ -25,11 +25,12 @@ app.get('/:state/feed', function(req, res) {
     title: 'Indivisible events in ' + req.params.state.toUpperCase(),
     feed_url: 'https://indivisible-events-by-state.herokuapp.com/' + req.params.state + '/feed',
     site_url: 'http://indivisibleguide.org',
+    type: 'application/xml'
   }
   var feed = new RSS(feedOptions);
 
-  var event_campaign_id = '07f7cfec-bd20-48bf-b309-380022daacb8'
-  var an_api_token = 'cac04e8d7b1faf6dc100f492238e3968'
+  var event_campaign_id = process.env.event_campaign_id
+  var an_api_token = process.env.an_api_token
 
   var theRightEvents = []
   var urls = []
