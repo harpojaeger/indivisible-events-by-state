@@ -14,7 +14,7 @@ pg.connect(process.env.DATABASE_URL, function(err, client) {
   console.log('Connected to postgres! Getting schemas...')
 
   client
-    .query('CREATE TABLE IF NOT EXISTS mytable( state TEXT, event TEXT );')
+    .query(`CREATE TABLE IF NOT EXISTS ${event_table_name}( state TEXT, event TEXT );``)
     .on('error', function(error){
       console.error(error)
     })
