@@ -12,13 +12,18 @@ console.log('Looking for table',event_table_name)
 pg.connect(process.env.DATABASE_URL, function(err, client) {
   if (err) throw err
   console.log('Connected to postgres! Getting schemas...')
-
   client
-    .query(`CREATE TABLE IF NOT EXISTS ${event_table_name}( state TEXT, event TEXT );``)
+    .on('notice', function(msg) {
+      console.log("notice: %j", msg);
+    })
     .on('error', function(error){
       console.error(error)
     })
-  var query_string = "SELECT table_schema,table_name FROM information_schema.tables WHERE table_name='mytable';"
+
+  client
+    .query(`CREATE TABLE IF NOT EXISTS ${event_table_name}( state TEXT, event TEXT );`)
+
+  var query_string = `SELECT * FROM information_schema.tables WHERE table_name='${event_table_name}';`
   client.query(query_string).on('row', function(row) {
     console.log(JSON.stringify(row));
   })
