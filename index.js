@@ -5,6 +5,7 @@ var bodyParser = require('body-parser')
 var async = require('async')
 var RSS = require('rss')
 var dateFormat = require('dateformat')
+var pg = require('pg')
 var port = process.env.PORT
 
 app.use( bodyParser.json() );       // to support JSON-encoded bodies

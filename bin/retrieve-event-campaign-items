@@ -1,2 +1,20 @@
 #!/usr/bin/env node
+var pg = require('pg')
+
 console.log('AN event retrieval script started.');
+var event_campaign_id = process.env.event_campaign_id
+var an_api_token = process.env.an_api_token
+var event_table_name = 'events-' + event_campaign_id
+console.log('Looking for db',target_db_name)
+
+var client = new pg.Client()
+
+client.connect(function (err) {
+  if(err) throw err;
+  var query_string = `CREATE TABLE IF NOT EXISTS ${event_table_name} (
+    state TEXT
+    event TEXT
+  )`
+  console.log(query_string)
+  //client.query(query_string)
+})
