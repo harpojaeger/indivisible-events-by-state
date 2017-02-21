@@ -9,8 +9,6 @@ var knex = require('knex')({
 var request = require('request')
 var async = require('async')
 
-var rowsInserted = 0
-var rowsUpdated = 0
 var event_campaign_id = process.env.event_campaign_id
 var an_api_token = process.env.an_api_token
 var event_table_name = 'events_' + event_campaign_id
@@ -23,14 +21,17 @@ async.waterfall([
       table.string('an_id').unique().notNull()
       table.string('state').notNull()
       table.json('json').notNull()
+      table.string('start_date').notNull()
     })
     .then(function(){
       cb()
     })
     .catch(function(err){
       if (err.code != '42P07') {
+        console.error(err)
         cb(err)
       } else {
+
         cb()
       }
     })
@@ -53,113 +54,115 @@ async.waterfall([
           var totalPages = JSONResponse.total_pages
           cb(null,totalPages)
         }
-      })
-    },
-    function(totalPages,cb){
-      console.log(totalPages + ' pages of events found.')
-
-
-      // Prepare requests for all the pages
-      // Use totalPages here
-      var urls = []
-      for(page = 1; page <= 3; page++){
-        urls.push('https://actionnetwork.org/api/v2/event_campaigns/'+ event_campaign_id + '/events?page='+page)
       }
+    )
+  },
+  function(totalPages,cb){
+    console.log(totalPages + ' pages of events found.')
 
-      // The function we'll map the per-page async requests to.
-      var fetch = function(file, cb) {
-        console.log('Fetching ' + file)
-        var options = {
-          method: 'GET',
-          url: file,
-          headers: {
-            'OSDI-API-Token': an_api_token
-          }
+
+    // Prepare requests for all the pages
+    // Use totalPages here
+    var urls = []
+    for(page = 1; page <= 3; page++){
+      urls.push('https://actionnetwork.org/api/v2/event_campaigns/'+ event_campaign_id + '/events?page='+page)
+    }
+
+    // The function we'll map the per-page async requests to.
+    var fetch = function(file, cb) {
+      //console.log('Fetching ' + file)
+      var options = {
+        method: 'GET',
+        url: file,
+        headers: {
+          'OSDI-API-Token': an_api_token
         }
-        request(options, function(err, response, body) {
-          if (err) {
-            cb(err)
-          } else {
-            cb(null, body)
-          }
-        })
       }
-      async.map(urls, fetch, function(err, results){
-        if (err) { cb(err) } else { cb(null,results) }
-      })
-    },
-    function(results,cb){
-      async.each(results,processEventPage,processEventPageCB)
-      function processEventPage(page,cb) {
-        console.log('processEventPage called')
-        try {
-          response = JSON.parse(page)
-        } catch(err) {
+      request(options, function(err, response, body) {
+        if (err) {
           cb(err)
+        } else {
+          cb(null, body)
         }
-        // Retrieve the events on this page
-        var events = response._embedded['osdi:events']
-
-        function eventUpdaterCB(err){
-          if(err){
-            console.error('eventUpdaterCB error',err)
-          } else {
-            console.log(rowsInserted + ' events inserted,',rowsUpdated,'updated.')
-          }
-        }
-        function eventUpdater(this_event,cb){
-          // Insert each state into the table
+      })
+    }
+    async.map(urls, fetch, function(err, results){
+      if (err) { cb(err) } else { cb(null, results) }
+    })
+  },
+  // Parse returned JSON and extract the part we're interested in.
+  function(results,cb){
+    function retrievePageEvents(pageJSON,cb){
+      try {
+        response = JSON.parse(pageJSON)
+      } catch(err) {
+        cb(err)
+      }
+      // Retrieve the events on this page
+      var events = response._embedded['osdi:events']
+      cb(null,events)
+    }
+    //Retrieve the events from each page and pass along to the next function
+    async.map(results, retrievePageEvents, function(err,results){
+      console.log('result length',results.length)
+      console.log('result subarray length',results[0].length)
+      // Consolidate all the events into one nice big array.  This will make the next step WAY easier.
+      var allEvents = []
+      results.forEach(function(batch){
+        batch.forEach(function(singleEvent){
+          allEvents.push(singleEvent)
+        })
+      })
+      cb(null, allEvents)
+    })
+  },
+  function(allEvents, cb) {
+    console.log('total events:',allEvents.length)
+    async.map(allEvents,eventUpdater,function(err,results){
+      console.log(results)
+      knex.destroy()
+    })
+    function eventUpdater(this_event,cb){
+      // Create an empty status object to be returned later
+      var status = {}
+      // Insert each state into the table
+      knex(event_table_name)
+      .insert({
+        state: this_event.location.region.toUpperCase(),
+        an_id: this_event.identifiers[0],
+        json: this_event,
+        start_date: this_event.start_date
+      })
+      .then(function(res){
+        status[this_event.identifiers[0]] = 'inserted';
+        cb(null,status)
+      })
+      .catch(function(err){
+        //Switch to updating if the row already exists
+        if(err.code == 23505) {
           knex(event_table_name)
-            .insert({
-              state: this_event.location.region.toUpperCase(),
-              an_id: this_event.identifiers[0],
+            .where('an_id','=',this_event.identifiers[0])
+            .update({
+              state: this_event.location.region,
               json: this_event,
-            })
-            .then(function(res){
-              rowsInserted++
-              cb()
+              start_date: this_event.start_date
             })
             .catch(function(err){
-              //Switch to updating if the row already exists
-              if(err.code == 23505) {
-                knex(event_table_name)
-                  .where('an_id','=',this_event.identifiers[0])
-                  .update({
-                    state: this_event.location.region,
-                    json: this_event,
-                  })
-                  .catch(function(err){
-                    console.log('knex update err',err)
-                  })
-                  .then(function(res){
-                    rowsUpdated++
-                    //Call the cb() with no error
-                    cb()
-                  })
-              } else {
-                //Otherwise, there might actually be an error!
-                cb(err)
-              }
+              cb(err)
             })
-          }
-          async.each(events,eventUpdater,eventUpdaterCB)
-        cb()
-      }
-      function processEventPageCB(err) {
-        console.log('processEventPageCB called')
-        if(err) {
-          console.error('processEventPageCB err',err)
+            .then(function(res){
+              //Call the cb() with no error
+              status[this_event.identifiers[0]] = 'updated';
+              cb(null,status)
+            })
         } else {
-
+          //Otherwise, there might actually be an error!
+          cb(err)
         }
-      }
-
-
-
-    },
+      })
+    }
+  },
   function globalCB(err, results) {
     console.error(err)
   }
-
-
 ])
