@@ -62,9 +62,8 @@ async.waterfall([
 
 
     // Prepare requests for all the pages
-    // Use totalPages here
     var urls = []
-    for(page = 1; page <= 3; page++){
+    for(page = 1; page <= totalPages; page++){
       urls.push('https://actionnetwork.org/api/v2/event_campaigns/'+ event_campaign_id + '/events?page='+page)
     }
 
@@ -96,22 +95,25 @@ async.waterfall([
       try {
         response = JSON.parse(pageJSON)
       } catch(err) {
+        console.log(err)
         cb(err)
       }
       // Retrieve the events on this page
       var events = response._embedded['osdi:events']
       cb(null,events)
     }
-    //Retrieve the events from each page and pass along to the next function
+    //Retrieve the events from each page for consolidation.
     async.map(results, retrievePageEvents, function(err,results){
-      console.log('result length',results.length)
-      console.log('result subarray length',results[0].length)
       // Consolidate all the events into one nice big array.  This will make the next step WAY easier.
       var allEvents = []
       results.forEach(function(batch){
-        batch.forEach(function(singleEvent){
-          allEvents.push(singleEvent)
-        })
+        try {
+          batch.forEach(function(singleEvent){
+            allEvents.push(singleEvent)
+          })
+        } catch(err) {
+          console.error(err)
+        }
       })
       cb(null, allEvents)
     })
@@ -120,46 +122,54 @@ async.waterfall([
     console.log('total events:',allEvents.length)
     async.map(allEvents,eventUpdater,function(err,results){
       console.log(results)
-      knex.destroy()
+      console.log('Finished updating events.')
+      //knex.destroy()
     })
     function eventUpdater(this_event,cb){
       // Create an empty status object to be returned later
       var status = {}
-      // Insert each state into the table
-      knex(event_table_name)
-      .insert({
-        state: this_event.location.region.toUpperCase(),
-        an_id: this_event.identifiers[0],
-        json: this_event,
-        start_date: this_event.start_date
-      })
-      .then(function(res){
-        status[this_event.identifiers[0]] = 'inserted';
-        cb(null,status)
-      })
-      .catch(function(err){
-        //Switch to updating if the row already exists
-        if(err.code == 23505) {
-          knex(event_table_name)
-            .where('an_id','=',this_event.identifiers[0])
-            .update({
-              state: this_event.location.region,
-              json: this_event,
-              start_date: this_event.start_date
-            })
-            .catch(function(err){
-              cb(err)
-            })
-            .then(function(res){
-              //Call the cb() with no error
-              status[this_event.identifiers[0]] = 'updated';
-              cb(null,status)
-            })
-        } else {
-          //Otherwise, there might actually be an error!
-          cb(err)
-        }
-      })
+      // Insert each event that has a state into the table
+      if(this_event.location.region){
+        knex(event_table_name)
+        .insert({
+          state: this_event.location.region.toUpperCase(),
+          an_id: this_event.identifiers[0],
+          json: this_event,
+          start_date: this_event.start_date
+        })
+        .then(function(res){
+          status[this_event.identifiers[0]] = 'inserted';
+          console.log('Inserted',this_event.identifiers[0])
+          cb(null,status)
+        })
+        .catch(function(err){
+          //Switch to updating if the row already exists
+          if(err.code == 23505) {
+            knex(event_table_name)
+              .where('an_id','=',this_event.identifiers[0])
+              .update({
+                state: this_event.location.region,
+                json: this_event,
+                start_date: this_event.start_date
+              })
+              .catch(function(err){
+                cb(err)
+              })
+              .then(function(res){
+                console.log('Updated',this_event.identifiers[0])
+                //Call the cb() with no error
+                status[this_event.identifiers[0]] = 'updated';
+                cb(null,status)
+              })
+          } else {
+            //Otherwise, there might actually be an error!
+            console.log(err)
+            cb(err)
+          }
+        })
+      } else {
+        cb()
+      }
     }
   },
   function globalCB(err, results) {

@@ -6,7 +6,15 @@ var async = require('async')
 var RSS = require('rss')
 var dateFormat = require('dateformat')
 var pg = require('pg')
+pg.defaults.ssl = true
+var knex = require('knex')({
+  client: 'pg',
+  connection: process.env.DATABASE_URL,
+  searchPath: 'knex,public'
+})
 var port = process.env.PORT
+var event_campaign_id = process.env.event_campaign_id
+var event_table_name = 'events_' + event_campaign_id
 
 app.use( bodyParser.json() );       // to support JSON-encoded bodies
 app.use(bodyParser.urlencoded({     // to support URL-encoded bodies
@@ -21,120 +29,64 @@ app.get('/:state/feed', function(req, res) {
   console.log(req)
   console.log('Looking for events in ' + req.params.state)
 
-  // Create a new RSS feed
-  var feedOptions = {
-    title: 'Indivisible events in ' + req.params.state.toUpperCase(),
-    feed_url: 'https://indivisible-events-by-state.herokuapp.com/' + req.params.state + '/feed',
-    site_url: 'http://indivisibleguide.org',
-    type: 'application/xml'
-  }
-  var feed = new RSS(feedOptions);
-
-  var event_campaign_id = process.env.event_campaign_id
-  var an_api_token = process.env.an_api_token
-
-  var theRightEvents = []
-  var urls = []
-
-  // Figure out how many pages of events there are in this campaign.
-  request(
-    {
-      url: 'https://actionnetwork.org/api/v2/event_campaigns/' + event_campaign_id + '/events',
-      headers: {
-        'OSDI-API-Token': an_api_token
-      }
-    },
-    function(error, response, body) {
-      JSONResponse = JSON.parse(body)
-      var totalPages = JSONResponse.total_pages
-      console.log('Completed request,', totalPages, 'pages of events found.')
-
-      // Prepare requests for all the pages
-      for(page = 1; page <= totalPages; page++){
-        urls.push('https://actionnetwork.org/api/v2/event_campaigns/'+ event_campaign_id + '/events?page='+page)
-      }
-
-      // The function we'll map the async requests to.
-      var fetch = function(file, cb) {
-        //console.log('Fetching ' + file)
-        var options = {
-          method: 'GET',
-          url: file,
-          headers: {
-            'OSDI-API-Token': an_api_token
-          }
-        }
-        request(options, function(err, response, body) {
-          if (err) {
-            cb(err)
-          } else {
-            cb(null, body)
-          }
-        })
-      }
-      console.log('async time!')
-      // Let's do this!
-      async.map(urls, fetch, function(err, results){
-        if (err) {
-          console.log('Uh oh, got an error.')
-        } else {
-          for(i=0; i<results.length; i++) {
-            console.log('Processing page ' + (i+1))
-            var page = results[i]
-            try {
-              response = JSON.parse(page)
-              // Retrieve the events on this page
-              var events = response._embedded['osdi:events']
-              events.forEach(function(this_event) {
-                // Check each event to see if it's in the right state
-                var state = this_event.location.region.toUpperCase()
-                if (state === req.params.state.toUpperCase() && Date.parse(this_event.start_date) >= Date.now() ){
-                  theRightEvents.push(this_event)
-                }
-              })
-              function byStartTime(a,b) {
-                var aDate = Date.parse(a.start_date)
-                var bDate = Date.parse(b.start_date)
-                if (aDate < bDate) return -1
-                if (aDate > bDate) return 1
-                return 0
-              }
-              theRightEvents.sort(byStartTime)
-            } catch(e) {
-              console.log(e)
-            }
-          }
-          console.log('Found ' + theRightEvents.length + ' events in ' + req.params.state)
-          console.log('Generating feed.')
-          for(i=0; i<theRightEvents.length; i++) {
-            var thisEvent = theRightEvents[i]
-            console.log('Processing event ',(i+1),'/',theRightEvents.length)
-            //console.log(thisEvent)
-            var formattedTime = dateFormat(thisEvent.start_date, 'UTC:ddd, mmm d, h:MM TT')
-            // Create a new feed item for each event
-            var itemOptions = {
-              title: thisEvent.title,
-              description: '<p>' + formattedTime + '</p>' + thisEvent.description,
-              url: thisEvent.browser_url,
-              guid: thisEvent.identifiers[0],
-              author: thisEvent._embedded['osdi:creator'].given_name + ' ' + thisEvent._embedded['osdi:creator'].family_name,
-              date: thisEvent.start_date,
-              lat: thisEvent.location.location.latitude,
-              long: thisEvent.location.location.longitude,
-            }
-            //console.log(itemOptions);
-            // Add the item to the feed
-            feed.item(itemOptions);
-          }
-          // Generate XML...
-          var xml = feed.xml({indent: true})
-          // And send it off!
-          res.send(xml)
-          console.log('Created feed for',req.params.state,'with',theRightEvents.length,'events.')
-        }
+  async.waterfall([
+    function(cb){
+      knex(event_table_name)
+      .where({
+        state: req.params.state
       })
+      .select('json','start_date')
+      .orderBy('start_date','asc')
+      .then(function(rows){
+        cb(null,rows)
+      })
+    },
+    function(inStateEvents,cb){
+      var feedOptions = {
+        title: 'Indivisible events in ' + req.params.state.toUpperCase(),
+        feed_url: 'https://indivisible-events-by-state.herokuapp.com/' + req.params.state + '/feed',
+        site_url: 'http://indivisibleguide.org',
+        type: 'application/xml'
+      }
+      // Create a new RSS feed
+      var feed = new RSS(feedOptions);
+      console.log('Found ' + inStateEvents.length + ' events in ' + req.params.state)
+      console.log('Generating feed.')
+      var upcomingEvents = 0;
+      inStateEvents.forEach(function(thisEvent){
+        if (Date.parse(thisEvent.start_date) > Date.now()) {
+          // Keep track of how many events are in the future – don't output others
+          upcomingEvents++
+          // We're only interested in the json field from the db (others are just for sorting and filtering)
+          var eventDetails = thisEvent.json
+
+          //console.log(eventDetails)
+          var formattedTime = dateFormat(eventDetails.start_date, 'UTC:ddd, mmm d, h:MM TT')
+          // Create a new feed item for each event
+          var itemOptions = {
+            title: eventDetails.title,
+            description: '<p>' + formattedTime + '</p>' + eventDetails.description,
+            url: eventDetails.browser_url,
+            guid: eventDetails.identifiers[0],
+            author: eventDetails._embedded['osdi:creator'].given_name + ' ' + eventDetails._embedded['osdi:creator'].family_name,
+            date: eventDetails.start_date,
+            lat: eventDetails.location.location.latitude,
+            long: eventDetails.location.location.longitude,
+          }
+          //console.log(itemOptions);
+          // Add the item to the feed
+          feed.item(itemOptions);
+        }
+
+      })
+      // Generate XML...
+      var xml = feed.xml({indent: true})
+      // And send it off!
+      res.send(xml)
+      console.log('Created feed for',req.params.state,'with',upcomingEvents,'upcoming events.')
+
     }
-  )
+  ])
 
 })
 
