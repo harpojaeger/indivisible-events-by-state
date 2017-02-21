@@ -94,13 +94,14 @@ async.waterfall([
     function retrievePageEvents(pageJSON,cb){
       try {
         response = JSON.parse(pageJSON)
+        // Retrieve the events on this page
+        var events = response._embedded['osdi:events']
+        cb(null,events)
       } catch(err) {
         console.log(err)
+        console.log(pageJSON)
         cb(err)
       }
-      // Retrieve the events on this page
-      var events = response._embedded['osdi:events']
-      cb(null,events)
     }
     //Retrieve the events from each page for consolidation.
     async.map(results, retrievePageEvents, function(err,results){
