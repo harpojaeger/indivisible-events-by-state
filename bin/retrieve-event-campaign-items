@@ -17,91 +17,131 @@ console.log('Looking for table',event_table_name)
 
 knex.schema
   .createTableIfNotExists(event_table_name, function (table){
-    table.string('an_id')
-    table.string('state')
-    table.json('json')
+    table.string('an_id').unique().notNull()
+    table.string('state').notNull()
+    table.json('json').notNull()
+  })
+  .catch(function(err){
+    console.log('createTableIfNotExists err',err.error)
   })
   .then(function(res){
-    knex
-      .select('*').from(event_table_name).map(function(row){
-        console.log('knex:',row)
-      })
-      .then(function(res){
-        // Figure out how many pages of events there are in this campaign.
-        console.log('Determining number of pages for event campaign',event_campaign_id)
-        request(
-          {
-            url: 'https://actionnetwork.org/api/v2/event_campaigns/' + event_campaign_id + '/events',
-            headers: {
-              'OSDI-API-Token': an_api_token
-            }
-          },
-          function(error, response, body) {
-            JSONResponse = JSON.parse(body)
-            var totalPages = JSONResponse.total_pages
-            console.log('Completed request,', totalPages, 'pages of events found.')
+      // Figure out how many pages of events there are in this campaign.
+      console.log('Determining number of pages for event campaign',event_campaign_id)
+      request(
+        {
+          url: 'https://actionnetwork.org/api/v2/event_campaigns/' + event_campaign_id + '/events',
+          headers: {
+            'OSDI-API-Token': an_api_token
+          }
+        },
+        function(error, response, body) {
+          JSONResponse = JSON.parse(body)
+          var totalPages = JSONResponse.total_pages
+          console.log('Completed request,', totalPages, 'pages of events found.')
 
-            // Prepare requests for all the pages
-            // Use totalPages here
-            var urls = []
-            for(page = 1; page <= 1; page++){
-              urls.push('https://actionnetwork.org/api/v2/event_campaigns/'+ event_campaign_id + '/events?page='+page)
-            }
+          var rowsInserted = 0
+          var rowsUpdated = 0
 
-            // The function we'll map the async requests to.
-            var fetch = function(file, cb) {
-              console.log('Fetching ' + file)
-              var options = {
-                method: 'GET',
-                url: file,
-                headers: {
-                  'OSDI-API-Token': an_api_token
-                }
+          // Prepare requests for all the pages
+          // Use totalPages here
+          var urls = []
+          for(page = 1; page <= 3; page++){
+            urls.push('https://actionnetwork.org/api/v2/event_campaigns/'+ event_campaign_id + '/events?page='+page)
+          }
+
+          // The function we'll map the per-page async requests to.
+          var fetch = function(file, cb) {
+            console.log('Fetching ' + file)
+            var options = {
+              method: 'GET',
+              url: file,
+              headers: {
+                'OSDI-API-Token': an_api_token
               }
-              request(options, function(err, response, body) {
-                if (err) {
-                  cb(err)
-                } else {
-                  cb(null, body)
-                }
-              })
             }
-            console.log('async time!')
-            // Let's do this!
-            async.map(urls, fetch, function(err, results){
+            request(options, function(err, response, body) {
               if (err) {
-                console.log('Uh oh, got an error.')
+                cb(err)
               } else {
-                for(i=0; i<results.length; i++) {
-                  console.log('Processing page ' + (i+1))
-                  var page = results[i]
-                  try {
-                    response = JSON.parse(page)
-                    // Retrieve the events on this page
-                    var events = response._embedded['osdi:events']
-
-                    events.forEach(function(this_event) {
-                      console.log(this_event.title)
-
-                      // Insert each state into the table
-                      knex(event_table_name)
-                        .insert({
-                          state: this_event.location.region.toUpperCase(),
-                          an_id: this_event.identifiers[0],
-                          json: this_event,
-                        })
-                        .then(function(res){
-                          console.log('knex returned result',res)
-                        })
-                    })
-                  } catch(e) {
-                    console.log(e)
-                  }
-                }
+                cb(null, body)
               }
             })
-
           }
-        )
-      })
+
+          function processEventPage(page,cb) {
+            console.log('processEventPage called')
+            try {
+              response = JSON.parse(page)
+            } catch(err) {
+              cb(err)
+            }
+            // Retrieve the events on this page
+            var events = response._embedded['osdi:events']
+
+            function eventUpdaterCB(err){
+              if(err){
+                console.error('eventUpdaterCB error',err)
+              } else {
+                console.log(rowsInserted + ' events inserted,',rowsUpdated,'updated.')
+              }
+            }
+            function eventUpdater(this_event,cb){
+              // Insert each state into the table
+              knex(event_table_name)
+                .insert({
+                  state: this_event.location.region.toUpperCase(),
+                  an_id: this_event.identifiers[0],
+                  json: this_event,
+                })
+                .then(function(res){
+                  rowsInserted++
+                  cb()
+                })
+                .catch(function(err){
+                  //Switch to updating if the row already exists
+                  if(err.code == 23505) {
+                    knex(event_table_name)
+                      .where('an_id','=',this_event.identifiers[0])
+                      .update({
+                        state: this_event.location.region,
+                        json: this_event,
+                      })
+                      .catch(function(err){
+                        console.log('knex update err',err)
+                      })
+                      .then(function(res){
+                        rowsUpdated++
+                        //Call the cb() with no error
+                        cb()
+                      })
+                  } else {
+                    //Otherwise, there might actually be an error!
+                    cb(err)
+                  }
+                })
+              }
+              async.each(events,eventUpdater,eventUpdaterCB)
+
+            cb()
+          }
+          function processEventPageCB(err) {
+            console.log('processEventPageCB called')
+            if(err) {
+              console.error('processEventPageCB err',err)
+            } else {
+
+            }
+          }
+
+          async.map(urls, fetch, function(err, results){
+            if (err) {
+              console.log('Uh oh, got an error.')
+            } else {
+              async.each(results,processEventPage,processEventPageCB)
+            }
+          })
+
+        }
+      )
+
   })
