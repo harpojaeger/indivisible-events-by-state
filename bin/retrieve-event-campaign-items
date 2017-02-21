@@ -1,26 +1,179 @@
 #!/usr/bin/env node
 var pg = require('pg')
 pg.defaults.ssl = true
+var knex = require('knex')({
+  client: 'pg',
+  connection: process.env.DATABASE_URL,
+  searchPath: 'knex,public'
+})
+var request = require('request')
+var async = require('async')
 
-console.log('AN event retrieval script started.');
 var event_campaign_id = process.env.event_campaign_id
 var an_api_token = process.env.an_api_token
 var event_table_name = 'events_' + event_campaign_id
-console.log(process.env.DATABASE_URL)
-console.log('Looking for table',event_table_name)
+console.log(event_table_name)
 
-pg.connect(process.env.DATABASE_URL, function(err, client) {
-  if (err) throw err
-  console.log('Connected to postgres! Getting schemas...')
-
-  client
-    .query(`CREATE TABLE IF NOT EXISTS ${event_table_name}( state TEXT, event TEXT );``)
-    .on('error', function(error){
-      console.error(error)
+async.waterfall([
+  function(cb){
+    knex.schema
+    .createTableIfNotExists(event_table_name, function (table){
+      table.string('an_id').unique().notNull()
+      table.string('state').notNull()
+      table.json('json').notNull()
+      table.string('start_date').notNull()
     })
-  var query_string = "SELECT table_schema,table_name FROM information_schema.tables WHERE table_name='mytable';"
-  client.query(query_string).on('row', function(row) {
-    console.log(JSON.stringify(row));
-  })
+    .then(function(){
+      cb()
+    })
+    .catch(function(err){
+      if (err.code != '42P07') {
+        console.error(err)
+        cb(err)
+      } else {
 
-});
+        cb()
+      }
+    })
+  },
+  function(cb){
+    // Figure out how many pages of events there are in this campaign.
+    console.log('Determining number of pages for event campaign',event_campaign_id)
+    request(
+      {
+        url: 'https://actionnetwork.org/api/v2/event_campaigns/' + event_campaign_id + '/events',
+        headers: {
+          'OSDI-API-Token': an_api_token
+        }
+      },
+      function(error, response, body) {
+        if(error) {
+          cb(error)
+        } else {
+          JSONResponse = JSON.parse(body)
+          var totalPages = JSONResponse.total_pages
+          cb(null,totalPages)
+        }
+      }
+    )
+  },
+  function(totalPages,cb){
+    console.log(totalPages + ' pages of events found.')
+
+
+    // Prepare requests for all the pages
+    var urls = []
+    for(page = 1; page <= totalPages; page++){
+      urls.push('https://actionnetwork.org/api/v2/event_campaigns/'+ event_campaign_id + '/events?page='+page)
+    }
+
+    // The function we'll map the per-page async requests to.
+    var fetch = function(file, cb) {
+      //console.log('Fetching ' + file)
+      var options = {
+        method: 'GET',
+        url: file,
+        headers: {
+          'OSDI-API-Token': an_api_token
+        }
+      }
+      request(options, function(err, response, body) {
+        if (err) {
+          cb(err)
+        } else {
+          cb(null, body)
+        }
+      })
+    }
+    async.map(urls, fetch, function(err, results){
+      if (err) { cb(err) } else { cb(null, results) }
+    })
+  },
+  // Parse returned JSON and extract the part we're interested in.
+  function(results,cb){
+    function retrievePageEvents(pageJSON,cb){
+      try {
+        response = JSON.parse(pageJSON)
+        // Retrieve the events on this page
+        var events = response._embedded['osdi:events']
+        cb(null,events)
+      } catch(err) {
+        console.log(err)
+        console.log(pageJSON)
+        cb(err)
+      }
+    }
+    //Retrieve the events from each page for consolidation.
+    async.map(results, retrievePageEvents, function(err,results){
+      // Consolidate all the events into one nice big array.  This will make the next step WAY easier.
+      var allEvents = []
+      results.forEach(function(batch){
+        try {
+          batch.forEach(function(singleEvent){
+            allEvents.push(singleEvent)
+          })
+        } catch(err) {
+          console.error(err)
+        }
+      })
+      cb(null, allEvents)
+    })
+  },
+  function(allEvents, cb) {
+    console.log('total events:',allEvents.length)
+    async.map(allEvents,eventUpdater,function(err,results){
+      console.log(results)
+      console.log('Finished updating events.')
+      //knex.destroy()
+    })
+    function eventUpdater(this_event,cb){
+      // Create an empty status object to be returned later
+      var status = {}
+      // Insert each event that has a state into the table
+      if(this_event.location.region){
+        knex(event_table_name)
+        .insert({
+          state: this_event.location.region.toUpperCase(),
+          an_id: this_event.identifiers[0],
+          json: this_event,
+          start_date: this_event.start_date
+        })
+        .then(function(res){
+          status[this_event.identifiers[0]] = 'inserted';
+          console.log('Inserted',this_event.identifiers[0])
+          cb(null,status)
+        })
+        .catch(function(err){
+          //Switch to updating if the row already exists
+          if(err.code == 23505) {
+            knex(event_table_name)
+              .where('an_id','=',this_event.identifiers[0])
+              .update({
+                state: this_event.location.region,
+                json: this_event,
+                start_date: this_event.start_date
+              })
+              .catch(function(err){
+                cb(err)
+              })
+              .then(function(res){
+                console.log('Updated',this_event.identifiers[0])
+                //Call the cb() with no error
+                status[this_event.identifiers[0]] = 'updated';
+                cb(null,status)
+              })
+          } else {
+            //Otherwise, there might actually be an error!
+            console.log(err)
+            cb(err)
+          }
+        })
+      } else {
+        cb()
+      }
+    }
+  },
+  function globalCB(err, results) {
+    console.error(err)
+  }
+])
