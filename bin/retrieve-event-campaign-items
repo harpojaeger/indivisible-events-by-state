@@ -123,6 +123,19 @@ async.waterfall([
     console.log('total events:',allEvents.length)
     async.map(allEvents,eventUpdater,function(err,results){
       console.log(results)
+      var actionCounts = {
+        inserted: 0,
+        updated: 0
+      }
+      // Count how many events were inserted/updated.
+      for (var prop in results){
+        try {
+          actionCounts[Object.values(results[prop])[0]]++
+        } catch (e) {
+          console.log(e)
+        }
+      }
+      console.log(actionCounts)
       console.log('Finished updating events.')
       //knex.destroy()
     })
