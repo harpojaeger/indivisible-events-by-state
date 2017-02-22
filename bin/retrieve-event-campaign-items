@@ -122,7 +122,7 @@ async.waterfall([
   function(allEvents, cb) {
     console.log('total events:',allEvents.length)
     async.map(allEvents,eventUpdater,function(err,results){
-      console.log(results)
+      //console.log(results)
       var actionCounts = {
         inserted: 0,
         updated: 0,
@@ -156,7 +156,7 @@ async.waterfall([
         })
         .then(function(res){
           status['action'] = 'inserted';
-          console.log('Inserted',this_event.identifiers[0])
+          //console.log('Inserted',this_event.identifiers[0])
           cb(null,status)
         })
         .catch(function(err){
@@ -173,7 +173,7 @@ async.waterfall([
                 cb(err)
               })
               .then(function(res){
-                console.log('Updated',this_event.identifiers[0])
+                //console.log('Updated',this_event.identifiers[0])
                 //Call the cb() with no error
                 status['action'] = 'updated';
                 cb(null,status)
