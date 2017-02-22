@@ -125,7 +125,7 @@ async.waterfall([
       console.log(results)
       var actionCounts = {
         inserted: 0,
-        updated: 0
+        updated: 0,
       }
       // Count how many events were inserted/updated.
       for (var prop in results){
