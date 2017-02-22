@@ -33,7 +33,7 @@ app.get('/:state/feed', function(req, res) {
     function(cb){
       knex(event_table_name)
       .where({
-        state: req.params.state
+        state: req.params.state.toUpperCase()
       })
       .select('json','start_date')
       .orderBy('start_date','asc')

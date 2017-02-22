@@ -164,7 +164,7 @@ async.waterfall([
             knex(event_table_name)
               .where('an_id','=',this_event.identifiers[0])
               .update({
-                state: this_event.location.region,
+                state: this_event.location.region.toUpperCase(),
                 json: this_event,
                 start_date: this_event.start_date
               })
