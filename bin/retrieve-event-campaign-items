@@ -130,7 +130,7 @@ async.waterfall([
       // Count how many events were inserted/updated.
       for (var prop in results){
         try {
-          actionCounts[Object.values(results[prop])[0]]++
+          actionCounts[results[prop]['action']]++
         } catch (e) {
           console.log(e)
         }
@@ -141,7 +141,9 @@ async.waterfall([
     })
     function eventUpdater(this_event,cb){
       // Create an empty status object to be returned later
-      var status = {}
+      var status = {
+        'an_id':this_event.identifiers[0],
+    }
       // Insert each event that has a state into the table
       if(this_event.location.region){
         knex(event_table_name)
@@ -152,7 +154,7 @@ async.waterfall([
           start_date: this_event.start_date
         })
         .then(function(res){
-          status[this_event.identifiers[0]] = 'inserted';
+          status['action'] = 'inserted';
           console.log('Inserted',this_event.identifiers[0])
           cb(null,status)
         })
@@ -172,7 +174,7 @@ async.waterfall([
               .then(function(res){
                 console.log('Updated',this_event.identifiers[0])
                 //Call the cb() with no error
-                status[this_event.identifiers[0]] = 'updated';
+                status['action'] = 'updated';
                 cb(null,status)
               })
           } else {
